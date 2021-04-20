@@ -1,15 +1,16 @@
 use super::pieces::*;
 use std::convert::TryInto;
-
 pub struct Board
 {
     pub pieces:Vec<Piece>,
     width:u32,
     height:u32,
-    active_color:PieceColor
+    pub selected_piece:Option<usize>,
+    current_player_color:PieceColor
 }
 impl Board
 {
+
     pub fn board_size(&self) -> (u32, u32)
     {
         (self.width, self.height)
@@ -21,7 +22,8 @@ impl Board
             pieces,
             width,
             height,
-            active_color:PieceColor::White
+            selected_piece:None,
+            current_player_color:PieceColor::White
         }
     }
     fn parse_fen_string(string:&str) -> Vec<Piece> //TODO: change type later
@@ -34,12 +36,12 @@ impl Board
                 else {PieceColor::White};
                 match ch.to_ascii_lowercase()
                 {
-                    'p' => PieceType::Pawn(color),
-                    'r' => PieceType::Rook(color),
-                    'b' => PieceType::Bishop(color),
-                    'n' => PieceType::Knight(color),
-                    'q' => PieceType::Queen(color),
-                    'k' => PieceType::King(color),
+                    'p' => PieceType::Pawn{color},
+                    'r' => PieceType::Rook{color},
+                    'b' => PieceType::Bishop{color},
+                    'n' => PieceType::Knight{color},
+                    'q' => PieceType::Queen{color},
+                    'k' => PieceType::King{color},
                     _ => panic!("Fen string error! Proper error handling not implemeted, sorry"),
                 }
             }
@@ -57,7 +59,7 @@ impl Board
                     current_x+=1;
                 }
             }
-            return pieces_vector;
+            pieces_vector
         }
 
         let vec:Vec<&str> = string.split(' ').collect();
@@ -66,19 +68,62 @@ impl Board
         //TODO:    let castling = vec[2];
         //TODO:    let en_passant  = vec[3];
     }
-    fn move_piece(&self, selected_piece:&mut Piece, move_to:Point)
+    pub fn move_piece(&mut self,  move_to:&Point)
     {
         //let moves = selected_piece.all_moves(self.width, self.height);
-        selected_piece.set_position(move_to);
-    }
-    pub fn get_piece_on_cell(&mut self, cell:Point) -> Option<&mut Piece>
-    {
-        for i in self.pieces.iter_mut()
+        match  self.selected_piece
         {
-            if i.position == cell{
-                return Some(i);
+            Some(val) => self.pieces[val].set_position(move_to),
+            None => panic!("trying to move unexisting piece"),
+        }
+    }
+
+    pub fn possible_moves(&self) ->  Vec<Point>
+    {
+        match self.selected()
+        {
+            None => vec![],
+            Some(piece) =>
+            {
+                for pattern in piece.piece_type.move_patterns()
+                {
+                    //print!("pattern");
+                    match pattern
+                    {
+                        MovePattern::Simple(p) =>  {
+                            //let mut p = p;
+                            // if piece.piece_type.color==PieceColor::Black
+                            // {
+                            //     position.y = -p.y
+                            //}
+
+                            vec![p+piece.position]
+                        },
+                        MovePattern::InfiniteLine(step) => {
+                            let mut result: Vec<Point> = Vec::new();
+                            let mut cell = step;
+                            while cell.x < self.width as i32 && cell.y < self.height as i32 &&
+                                cell.x > 0           && cell.y > 0
+                            {
+                                result.push(cell);
+                                cell = cell+step;
+                            }
+                            result
+                        },
+                    };
+                }
+                vec![]
             }
         }
-        None
+    }
+
+    pub fn selected(&self) -> Option<&Piece>
+    {
+        Some(&self.pieces[self.selected_piece?])
+    }
+
+    pub fn select_piece_by_pos(&mut self, pos:&Point)
+    {
+        self.selected_piece = self.pieces.iter().position(|val:&Piece| val.position==*pos);
     }
 }

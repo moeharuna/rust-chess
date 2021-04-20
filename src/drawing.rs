@@ -2,9 +2,10 @@ use raylib::prelude::*;
 use raylib::ffi::LoadImageFromMemory;
 use std::ffi::CString;
 use std::collections::HashMap;
-
 use super::pieces::{*, PieceType::*, PieceColor::*};
 use super::board::Board;
+
+
 
 
 struct RayLibState
@@ -15,10 +16,6 @@ struct RayLibState
 
 impl RayLibState
 {
-    pub fn start_drawing(&mut self) -> RaylibDrawHandle
-    {
-        self.handle.begin_drawing(&self.thread)
-    }
     pub fn load_png_image(&mut self, texture_str:&[u8],) -> Texture2D
     {
         let png_str = CString::new("png").expect("Woopsie Doopse. Somehow creating CString from  string literal failed.").into_raw();
@@ -38,12 +35,12 @@ impl RayLibState
 }
 
 
-//TODO: Decouple struct as raylib_state, raylibOnly_function, drawing_function_that_require_board, input(?)
+
+
 pub struct PixelBoard
 {
     raylib:RayLibState,
     board:Board,
-    selected_piece:Option<Piece>,
     textures:HashMap<PieceType, Texture2D>,
     height:i32,
     width:i32,
@@ -51,21 +48,22 @@ pub struct PixelBoard
 
 impl PixelBoard
 {
+
     fn init_textures(raylib:&mut RayLibState) -> HashMap<PieceType, Texture2D>
     {
         let mut textures = HashMap::new();
-        textures.insert(Pawn(Black),   raylib.load_png_image(&include_bytes!("../res/black_pawn.png")[..])); //FIXME: Its probably good idea to use here match somehow and force rust to check all variants
-        textures.insert(Pawn(White),   raylib.load_png_image(&include_bytes!("../res/white_pawn.png")[..]));
-        textures.insert(Rook(Black),   raylib.load_png_image(&include_bytes!("../res/black_rook.png")[..]));
-        textures.insert(Rook(White),   raylib.load_png_image(&include_bytes!("../res/white_rook.png")[..]));
-        textures.insert(Knight(Black), raylib.load_png_image(&include_bytes!("../res/black_knight.png")[..]));
-        textures.insert(Knight(White), raylib.load_png_image(&include_bytes!("../res/white_knight.png")[..]));
-        textures.insert(Bishop(Black), raylib.load_png_image(&include_bytes!("../res/black_bishop.png")[..]));
-        textures.insert(Bishop(White), raylib.load_png_image(&include_bytes!("../res/white_bishop.png")[..]));
-        textures.insert(Queen(Black),  raylib.load_png_image(&include_bytes!("../res/black_queen.png")[..]));
-        textures.insert(Queen(White),  raylib.load_png_image(&include_bytes!("../res/white_queen.png")[..]));
-        textures.insert(King(Black),   raylib.load_png_image(&include_bytes!("../res/black_king.png")[..]));
-        textures.insert(King(White),   raylib.load_png_image(&include_bytes!("../res/white_king.png")[..]));
+        textures.insert(Pawn{color:Black},   raylib.load_png_image(&include_bytes!("../res/black_pawn.png")[..])); //FIXME: Its probably good idea to use here match somehow and force rust to check all variants
+        textures.insert(Pawn{color: White},   raylib.load_png_image(&include_bytes!("../res/white_pawn.png")[..]));
+        textures.insert(Rook{color:Black},   raylib.load_png_image(&include_bytes!("../res/black_rook.png")[..]));
+        textures.insert(Rook{color: White},   raylib.load_png_image(&include_bytes!("../res/white_rook.png")[..]));
+        textures.insert(Knight{color:Black}, raylib.load_png_image(&include_bytes!("../res/black_knight.png")[..]));
+        textures.insert(Knight{color: White}, raylib.load_png_image(&include_bytes!("../res/white_knight.png")[..]));
+        textures.insert(Bishop{color:Black}, raylib.load_png_image(&include_bytes!("../res/black_bishop.png")[..]));
+        textures.insert(Bishop{color: White}, raylib.load_png_image(&include_bytes!("../res/white_bishop.png")[..]));
+        textures.insert(Queen{color:Black},  raylib.load_png_image(&include_bytes!("../res/black_queen.png")[..]));
+        textures.insert(Queen{color: White},  raylib.load_png_image(&include_bytes!("../res/white_queen.png")[..]));
+        textures.insert(King{color:Black},   raylib.load_png_image(&include_bytes!("../res/black_king.png")[..]));
+        textures.insert(King{color: White},   raylib.load_png_image(&include_bytes!("../res/white_king.png")[..]));
 
         for (_, i) in textures.iter_mut()
         {
@@ -82,7 +80,7 @@ impl PixelBoard
             .build();
         let mut state = RayLibState{handle, thread};
         let textures = Self::init_textures(&mut state);
-        PixelBoard{raylib:state, board, selected_piece:None, textures, width, height}
+        PixelBoard{raylib:state, board, textures, width, height}
     }
 
 
@@ -93,47 +91,44 @@ impl PixelBoard
         let cell_height = cell_height  as f32;
         Point{x:(pixel.x/cell_width).ceil() as i32,
               y:(pixel.y/cell_height).ceil() as i32}
-
-
-}
-    fn cell2pixel(&self, cell: Point) -> Rectangle
-    {
-        let (pixel_width, pixel_height)  = self.get_cell_wh();
-        let x:f32 = (cell.x*pixel_width) as f32;
-        let y:f32 = (cell.y*pixel_height) as f32;
-        Rectangle::new(x,y, pixel_width as f32, pixel_height as f32)
-
     }
+    // fn cell2pixel(&self, cell: Point) -> Rectangle
+    // {
+    //     let (pixel_width, pixel_height)  = self.get_cell_wh();
+    //     let x:f32 = (cell.x*pixel_width) as f32;
+    //     let y:f32 = (cell.y*pixel_height) as f32;
+    //     Rectangle::new(x,y, pixel_width as f32, pixel_height as f32)
+    // }
+
     ///Function that returns postion of mouse where x and y are board squares, not pixels on screen.
     ///Be aware that this function still can return negative values and values largers that Board.board_size()
     pub fn get_mouse_pos(&self) -> Point
     {
         let pixel_mouse_pos = self.raylib.handle.get_mouse_position();
         let mut cell_mouse_pos = self.pixel2cell(pixel_mouse_pos);
-        cell_mouse_pos.x = cell_mouse_pos.x-2;
-        cell_mouse_pos.y = cell_mouse_pos.y-2;
+        cell_mouse_pos.x -= 2;
+        cell_mouse_pos.y -= 2;
         cell_mouse_pos
     }
 
-/*
-    pub fn tick(&mut self, board:&Board)
+    fn input_handler(&mut self)
     {
         if self.raylib.handle.is_mouse_button_pressed(consts::MouseButton::MOUSE_LEFT_BUTTON)
         {
-            let pos = self.get_mouse_pos(board);
-//            self.selected_piece = *(board.get_piece_on_cell(pos).unwrap().clone()); //FIXME: selected piece should be reference or better it's should not exist
-            //todo!("draw possible positions")
-        }
-        else if self.raylib.handle.is_mouse_button_released(consts::MouseButton::MOUSE_LEFT_BUTTON)
-        {
-            match self.selected_piece
+            if self.board.selected().is_some() &&
+                self.board.possible_moves().iter().any(|&square| square==self.get_mouse_pos())
             {
-                None => (),
-                Some(piece) => piece.set_position(self.get_mouse_pos(board))
+                self.board.move_piece(&self.get_mouse_pos());
             }
+            self.board.select_piece_by_pos(&self.get_mouse_pos())
         }
     }
-     */
+
+    pub fn tick(&mut self)
+    {
+        self.input_handler();
+        self.draw()
+    }
     pub fn should_close(&self) -> bool
     {
         self.raylib.should_close()
@@ -153,29 +148,56 @@ impl PixelBoard
         ( size/cell_width,
           size/cell_height)
     }
-    //TODO: decouple this function
-    pub fn draw_board(
-        &mut self,
-        x:i32, y:i32)
+
+    fn calculate_square_color(board:&Board, square:&Point) -> Color
     {
+        const BLACK_COLOR:Color = Color::BROWN;
+        const WHITE_COLOR:Color = Color::GRAY;
+        const SELECT_COLOR:Color = Color::DARKGREEN;
+        const MOVES_COLOR:Color = Color::GREEN;
+
+
+        match board.selected() // idk why but rust option<box> can't compared by !=  with None
+        {
+            None => (),
+            Some (val) =>
+            {
+                if val.position==*square
+                {
+                    return SELECT_COLOR
+                } else if board.possible_moves().iter().find(|&x| x==square)!=None
+                {
+                    return MOVES_COLOR
+                }
+            }
+        };
+        if (square.y+square.x)%2==0 {WHITE_COLOR}
+        else {BLACK_COLOR}
+    }
+
+    //TODO: decouple this function
+    pub fn draw(
+        &mut self)
+    {
+
 
 
         let (rect_width, rect_height) = self.get_cell_wh();
         let (board_width, board_height) = self.board.board_size();
-        let height_offset = y as i32 + rect_height+1;
-        let width_offset  = x as i32 + rect_width+1;
+        let height_offset = rect_height+1;
+        let width_offset  = rect_width+1;
         let mut draw = self.raylib.handle.begin_drawing(&self.raylib.thread);
         draw.clear_background(Color::LIGHTGRAY);
         for i in 0..board_width as u8
         {
-            draw.draw_text(&(('A' as u8 +i) as char).to_string(), (i as i32)*rect_width+width_offset, height_offset-rect_width, rect_width, Color::BLACK);
+            draw.draw_text(&((b'A'  +i) as char).to_string(), (i as i32)*rect_width+width_offset, height_offset-rect_width, rect_width, Color::BLACK);
         }
         for i in 0..board_height as i32
         {
             draw.draw_text(&(i+1).to_string(), width_offset-rect_height, i*rect_height+height_offset, rect_height, Color::BLACK);
             for j in 0..board_width as i32
             {
-                let color = if (i+j)%2==0 {Color::GRAY} else {Color::BROWN};
+                let color  = Self::calculate_square_color(&self.board, &Point{x:j, y:i});
                 draw.draw_rectangle( j*rect_width+width_offset, i*rect_height+height_offset,
                                      rect_width, rect_height, color);
             }
@@ -187,17 +209,11 @@ impl PixelBoard
             let texture  = match self.textures.get(&i.piece_type)
             {
                 Some(val) => val,
-                None => panic!( format!("Somehow texture of this type ({:?}) not exist", i.piece_type))
+                None => panic!("Somehow texture of this type ({:?}) not exist", i.piece_type)
             };
             draw_texture_with_scale(&mut draw, &texture, piece_pos_x, piece_pos_y, rect_width as f32, rect_height as f32)
         }
     }
-
-
-
-
-
-
 }
 fn draw_texture_with_scale(draw:&mut RaylibDrawHandle, texture:&Texture2D,  x:i32, y:i32, width:f32, height:f32,)
 {

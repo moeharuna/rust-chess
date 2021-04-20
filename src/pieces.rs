@@ -24,7 +24,7 @@ impl std::ops::Add for Point
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Piece
 {
     pub position:Point,
@@ -37,33 +37,9 @@ impl Piece
     {
         Piece{position, piece_type}
     }
-    pub fn set_position(&mut self, point:Point)
+    pub fn set_position(&mut self, point:&Point)
     {
-        self.position = point;
-    }
-    pub fn all_moves(&self, board_width:u32, board_height:u32) ->  Vec<Point> //its not good that i made function here that requiers board_width & height,
-    {
-        let board_width = board_width as i32;
-        let board_height =board_height as i32;
-        for pattern in self.piece_type.move_patterns()
-            {
-                match pattern
-                {
-                    MovePattern::Simple(p) => vec![p+self.position],
-                    MovePattern::InfiniteLine(step) => {
-                        let mut result: Vec<Point> = Vec::new();
-                        let mut cell = step.clone();
-                        while cell.x < board_width && cell.y < board_height &&
-                              cell.x > 0           && cell.y > 0
-                        {
-                            result.push(cell.clone());
-                            cell = cell+step;
-                        }
-                        result
-                    },
-                };
-            }
-        vec![]
+        self.position = *point;
     }
 }
 
@@ -92,25 +68,26 @@ impl Default for PieceColor
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum PieceType
 {
-    Pawn(PieceColor),
-    Rook(PieceColor),
-    Knight(PieceColor),
-    Bishop(PieceColor),
-    Queen(PieceColor),
-    King(PieceColor),
+    Pawn{color:PieceColor},
+    Rook{color:PieceColor},
+    Knight{color:PieceColor},
+    Bishop{color:PieceColor},
+    Queen{color:PieceColor},
+    King{color:PieceColor},
 }
 
 impl PieceType
 {
-    pub fn move_patterns(&self) -> Vec<MovePattern> //this function generates vector of  possible moves. They are relative to piece origin
+    pub fn move_patterns(&self) -> Vec<MovePattern> //TODO: Make this compile time?
+    //this function generates vector of  possible moves. They are relative to piece origin and they are ignoring color
     {
         match self
         {
-            PieceType::Pawn(_) =>
+            PieceType::Pawn{..} =>
             {
                 vec![MovePattern::Simple(Point::new(0, 1))]
             },
-            PieceType::Rook(_) => {
+            PieceType::Rook{..} => {
                 vec!
                 [
                     MovePattern::InfiniteLine(Point::new(0,  1)), //up
@@ -119,7 +96,7 @@ impl PieceType
                     MovePattern::InfiniteLine(Point::new(-1, 0)), //left
                 ]
             }
-            PieceType::Bishop(_) =>
+            PieceType::Bishop{..} =>
             {
                 vec!
                     [
@@ -129,7 +106,7 @@ impl PieceType
                         MovePattern::InfiniteLine(Point::new(-1, -1)),
                     ]
             }
-            PieceType::King(_) =>
+            PieceType::King{..} =>
             {
                 vec![
                     MovePattern::Simple(Point::new(0,1)),
@@ -144,7 +121,7 @@ impl PieceType
                     MovePattern::Simple(Point::new(1, 1)),
                 ]
             }
-            PieceType::Queen(_) =>
+            PieceType::Queen{..} =>
             {
                 vec![
                     MovePattern::InfiniteLine(Point::new(0,  1)), //up
@@ -158,7 +135,7 @@ impl PieceType
                     MovePattern::InfiniteLine(Point::new(-1,-1)),
                 ]
             }
-            PieceType::Knight(_) =>
+            PieceType::Knight{..} =>
             {
                 vec![
                     MovePattern::Simple(Point::new(1,  2)),
