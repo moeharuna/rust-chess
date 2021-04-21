@@ -85,34 +85,31 @@ impl Board
             None => vec![],
             Some(piece) =>
             {
+                let mut result:Vec<Point> = Vec::new();
                 for pattern in piece.piece_type.move_patterns()
                 {
-                    //print!("pattern");
                     match pattern
                     {
                         MovePattern::Simple(p) =>  {
-                            //let mut p = p;
-                            // if piece.piece_type.color==PieceColor::Black
-                            // {
-                            //     position.y = -p.y
-                            //}
-
-                            vec![p+piece.position]
+                            let mut p = p;
+                            if piece.piece_type.get_color()==PieceColor::Black
+                            {
+                                p.y = -p.y
+                            }
+                            result.push(p+piece.position);
                         },
                         MovePattern::InfiniteLine(step) => {
-                            let mut result: Vec<Point> = Vec::new();
-                            let mut cell = step;
-                            while cell.x < self.width as i32 && cell.y < self.height as i32 &&
-                                cell.x > 0           && cell.y > 0
+                            let mut square = piece.position;
+                            while (square.x < self.width as i32 && square.y < self.height as i32) &&
+                                  (square.x > -1 && square.y > -1)
                             {
-                                result.push(cell);
-                                cell = cell+step;
+                                square = square+step;
+                                result.push(square);
                             }
-                            result
                         },
-                    };
+                    }
                 }
-                vec![]
+                result
             }
         }
     }

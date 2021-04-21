@@ -51,7 +51,7 @@ pub enum MovePattern
     //Castling(Point),
 }
 
-#[derive(Clone, PartialEq, Hash, Eq, Debug)]
+#[derive(Clone, PartialEq, Hash, Eq, Debug, Copy)]
 pub enum PieceColor
 {
     Black,
@@ -78,6 +78,20 @@ pub enum PieceType
 
 impl PieceType
 {
+
+
+    pub fn get_color(&self) -> PieceColor
+    {
+        match self
+        {
+            PieceType::Pawn{color} => *color, //pretty shitty that i forced to do something like this. but for now its fine
+            PieceType::Rook{color} => *color,
+            PieceType::Knight{color} => *color,
+            PieceType::Bishop{color} => *color,
+            PieceType::Queen{color} => *color,
+            PieceType::King{color} => *color
+        }
+    }
     pub fn move_patterns(&self) -> Vec<MovePattern> //TODO: Make this compile time?
     //this function generates vector of  possible moves. They are relative to piece origin and they are ignoring color
     {

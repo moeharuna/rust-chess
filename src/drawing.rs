@@ -116,7 +116,7 @@ impl PixelBoard
         if self.raylib.handle.is_mouse_button_pressed(consts::MouseButton::MOUSE_LEFT_BUTTON)
         {
             if self.board.selected().is_some() &&
-                self.board.possible_moves().iter().any(|&square| square==self.get_mouse_pos())
+                self.board.possible_moves().iter().any(|&square| {print!("{:?}", square); square==self.get_mouse_pos()})
             {
                 self.board.move_piece(&self.get_mouse_pos());
             }
@@ -165,7 +165,7 @@ impl PixelBoard
                 if val.position==*square
                 {
                     return SELECT_COLOR
-                } else if board.possible_moves().iter().find(|&x| x==square)!=None
+                } else if board.possible_moves().iter().find(|&x| x==square).is_some()
                 {
                     return MOVES_COLOR
                 }
