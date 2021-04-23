@@ -52,18 +52,18 @@ impl PixelBoard
     fn init_textures(raylib:&mut RayLibState) -> HashMap<PieceType, Texture2D>
     {
         let mut textures = HashMap::new();
-        textures.insert(Pawn{color:Black},   raylib.load_png_image(&include_bytes!("../res/black_pawn.png")[..])); //FIXME: Its probably good idea to use here match somehow and force rust to check all variants
-        textures.insert(Pawn{color: White},   raylib.load_png_image(&include_bytes!("../res/white_pawn.png")[..]));
-        textures.insert(Rook{color:Black},   raylib.load_png_image(&include_bytes!("../res/black_rook.png")[..]));
-        textures.insert(Rook{color: White},   raylib.load_png_image(&include_bytes!("../res/white_rook.png")[..]));
-        textures.insert(Knight{color:Black}, raylib.load_png_image(&include_bytes!("../res/black_knight.png")[..]));
-        textures.insert(Knight{color: White}, raylib.load_png_image(&include_bytes!("../res/white_knight.png")[..]));
-        textures.insert(Bishop{color:Black}, raylib.load_png_image(&include_bytes!("../res/black_bishop.png")[..]));
-        textures.insert(Bishop{color: White}, raylib.load_png_image(&include_bytes!("../res/white_bishop.png")[..]));
-        textures.insert(Queen{color:Black},  raylib.load_png_image(&include_bytes!("../res/black_queen.png")[..]));
-        textures.insert(Queen{color: White},  raylib.load_png_image(&include_bytes!("../res/white_queen.png")[..]));
-        textures.insert(King{color:Black},   raylib.load_png_image(&include_bytes!("../res/black_king.png")[..]));
-        textures.insert(King{color: White},   raylib.load_png_image(&include_bytes!("../res/white_king.png")[..]));
+        textures.insert(Pawn(Black),   raylib.load_png_image(&include_bytes!("../res/black_pawn.png")[..])); //FIXME: Its probably good idea to use here match somehow and force rust to check all variants
+        textures.insert(Pawn( White),   raylib.load_png_image(&include_bytes!("../res/white_pawn.png")[..]));
+        textures.insert(Rook(Black),   raylib.load_png_image(&include_bytes!("../res/black_rook.png")[..]));
+        textures.insert(Rook( White),   raylib.load_png_image(&include_bytes!("../res/white_rook.png")[..]));
+        textures.insert(Knight(Black), raylib.load_png_image(&include_bytes!("../res/black_knight.png")[..]));
+        textures.insert(Knight( White), raylib.load_png_image(&include_bytes!("../res/white_knight.png")[..]));
+        textures.insert(Bishop(Black), raylib.load_png_image(&include_bytes!("../res/black_bishop.png")[..]));
+        textures.insert(Bishop( White), raylib.load_png_image(&include_bytes!("../res/white_bishop.png")[..]));
+        textures.insert(Queen(Black),  raylib.load_png_image(&include_bytes!("../res/black_queen.png")[..]));
+        textures.insert(Queen( White),  raylib.load_png_image(&include_bytes!("../res/white_queen.png")[..]));
+        textures.insert(King(Black),   raylib.load_png_image(&include_bytes!("../res/black_king.png")[..]));
+        textures.insert(King( White),   raylib.load_png_image(&include_bytes!("../res/white_king.png")[..]));
 
         for (_, i) in textures.iter_mut()
         {
@@ -116,11 +116,14 @@ impl PixelBoard
         if self.raylib.handle.is_mouse_button_pressed(consts::MouseButton::MOUSE_LEFT_BUTTON)
         {
             if self.board.selected().is_some() &&
-                self.board.possible_moves().iter().any(|&square| {print!("{:?}", square); square==self.get_mouse_pos()})
+                self.board.possible_moves().iter().any(|&square|  square==self.get_mouse_pos())
             {
                 self.board.move_piece(&self.get_mouse_pos());
             }
-            self.board.select_piece_by_pos(&self.get_mouse_pos())
+            else {
+                self.board.select_piece_by_pos(&self.get_mouse_pos());
+            }
+
         }
     }
 

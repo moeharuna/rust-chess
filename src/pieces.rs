@@ -41,6 +41,10 @@ impl Piece
     {
         self.position = *point;
     }
+    pub fn move_patterns(&self) -> Vec<MovePattern>
+    {
+        self.piece_type.move_patterns(self.position)
+    }
 }
 
 pub enum MovePattern
@@ -68,12 +72,12 @@ impl Default for PieceColor
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum PieceType
 {
-    Pawn{color:PieceColor},
-    Rook{color:PieceColor},
-    Knight{color:PieceColor},
-    Bishop{color:PieceColor},
-    Queen{color:PieceColor},
-    King{color:PieceColor},
+    Pawn(PieceColor),
+    Rook(PieceColor),
+    Knight(PieceColor),
+    Bishop(PieceColor),
+    Queen(PieceColor),
+    King(PieceColor),
 }
 
 impl PieceType
@@ -84,24 +88,36 @@ impl PieceType
     {
         match self
         {
-            PieceType::Pawn{color} => *color, //pretty shitty that i forced to do something like this. but for now its fine
-            PieceType::Rook{color} => *color,
-            PieceType::Knight{color} => *color,
-            PieceType::Bishop{color} => *color,
-            PieceType::Queen{color} => *color,
-            PieceType::King{color} => *color
+            PieceType::Pawn(color) => *color, //pretty shitty that i forced to do something like this. but for now its fine
+            PieceType::Rook(color) => *color,
+            PieceType::Knight(color) => *color,
+            PieceType::Bishop(color) => *color,
+            PieceType::Queen(color) => *color,
+            PieceType::King(color) => *color
         }
     }
-    pub fn move_patterns(&self) -> Vec<MovePattern> //TODO: Make this compile time?
+    fn move_patterns(&self, pos:Point) -> Vec<MovePattern>
+    //TODO: Make this compile time?
     //this function generates vector of  possible moves. They are relative to piece origin and they are ignoring color
     {
         match self
         {
-            PieceType::Pawn{..} =>
+            PieceType::Pawn(PieceColor::Black) if  pos.y==6 => //FIXME: This should have better solution
+            {
+                vec![MovePattern::Simple(Point::new(0, 1)),
+                     MovePattern::Simple(Point::new(0, 2))]
+            }
+            PieceType::Pawn(PieceColor::White) if  pos.y==1 =>
+            {
+                vec![MovePattern::Simple(Point::new(0, 1)),
+                     MovePattern::Simple(Point::new(0, 2))]
+            },
+            PieceType::Pawn(_) =>
             {
                 vec![MovePattern::Simple(Point::new(0, 1))]
             },
-            PieceType::Rook{..} => {
+
+            PieceType::Rook(_) => {
                 vec!
                 [
                     MovePattern::InfiniteLine(Point::new(0,  1)), //up
@@ -110,7 +126,7 @@ impl PieceType
                     MovePattern::InfiniteLine(Point::new(-1, 0)), //left
                 ]
             }
-            PieceType::Bishop{..} =>
+            PieceType::Bishop(_) =>
             {
                 vec!
                     [
@@ -120,7 +136,7 @@ impl PieceType
                         MovePattern::InfiniteLine(Point::new(-1, -1)),
                     ]
             }
-            PieceType::King{..} =>
+            PieceType::King(_) =>
             {
                 vec![
                     MovePattern::Simple(Point::new(0,1)),
@@ -135,7 +151,7 @@ impl PieceType
                     MovePattern::Simple(Point::new(1, 1)),
                 ]
             }
-            PieceType::Queen{..} =>
+            PieceType::Queen(_) =>
             {
                 vec![
                     MovePattern::InfiniteLine(Point::new(0,  1)), //up
@@ -149,7 +165,7 @@ impl PieceType
                     MovePattern::InfiniteLine(Point::new(-1,-1)),
                 ]
             }
-            PieceType::Knight{..} =>
+            PieceType::Knight(_) =>
             {
                 vec![
                     MovePattern::Simple(Point::new(1,  2)),
