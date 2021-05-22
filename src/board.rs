@@ -1,31 +1,57 @@
+use raylib::ffi::GL_COMPRESSED_SIGNED_RED_RGTC1;
+
 use super::pieces::*;
 use std::convert::TryInto;
 pub struct Board
 {
     pub pieces:Vec<Piece>,
-    width:u32,
-    height:u32,
+    width:i32,
+    height:i32,
     pub selected_piece:Option<usize>,
-    current_player_color:PieceColor
+    current_player_color:PieceColor,
+    is_checked:bool,
 }
 impl Board
 {
+    fn regenerate_moves(&mut self)
+    {
+        for i in 0..self.pieces.len()
+        {
+            self.pieces[i].moves_list = self.generate_moves(&self.pieces[i]);
+        }
+        print!("generated\n");
+    }
+    pub fn turn(&mut self)
+    {
+        self.regenerate_moves();
+        if self.is_king_checked(!self.current_player_color)
+        {
+            print!("King is checked!\n");
+        }
+        self.selected_piece = None;
+        self.change_player();
+        print!("turn ended\n")
+    }
 
-    pub fn board_size(&self) -> (u32, u32)
+    pub fn board_size(&self) -> (i32, i32)
     {
         (self.width, self.height)
     }
-    pub fn from_fen_string(string:&str, width:u32, height:u32) ->Board
+    pub fn from_fen_string(string:&str, width:i32, height:i32) ->Board
     {
         let pieces = Board::parse_fen_string(string);
-        Board{
+        let mut result = Board{
             pieces,
             width,
             height,
             selected_piece:None,
-            current_player_color:PieceColor::White
-        }
+            current_player_color:PieceColor::White,
+            is_checked:false
+        };
+        result.regenerate_moves();
+        result
     }
+
     fn parse_fen_string(string:&str) -> Vec<Piece> //TODO: change type later
     {
         fn parse_placement(placement:&str) -> Vec<Piece>
@@ -55,7 +81,7 @@ impl Board
                 for (_j, ch) in string.chars().enumerate()
                 {
                     if ch.is_ascii_digit() {current_x+=ch.to_digit(10).unwrap() as i32} //FIX THIS SHIT IT WONT WORK WITH BOARD SIZE > 9
-                    else {pieces_vector.push(Piece::new(Point::new(current_x, i.try_into().unwrap()), fen_char_to_piece_type(ch)));}
+                    else {pieces_vector.push(Piece::new(Square::new(current_x, i.try_into().unwrap()), fen_char_to_piece_type(ch), vec![]));}
                     current_x+=1;
                 }
             }
@@ -78,11 +104,11 @@ impl Board
         }
     }
 
-    pub fn get_piece(&self, square:&Point) -> Option<&Piece>
+    pub fn get_piece(&self, square:&Square) -> Option<&Piece>
     {
         self.pieces.iter().find(|val:&&Piece| val.position==*square)
     }
-    pub fn remove_piece(&mut self, square:&Point) -> bool //TODO: Validate selected_piece after remove
+    pub fn remove_piece(&mut self, square:&Square) -> bool //TODO: Validate selected_piece after remove
     {
         let remove_index = self.pieces.iter().position(|piece:&Piece| piece.position==*square);
         match remove_index
@@ -104,13 +130,38 @@ impl Board
         true
     }
 
+    fn get_king(&self, color:PieceColor) -> Option<&Piece>
+    {
+        self.pieces.iter().find(|piece| piece.piece_type==PieceType::King(color))
+    }
+
     pub fn selected(&self) -> Option<&Piece>
     {
-        print!("selected: {:?}\n", self.pieces[self.selected_piece?]);
         Some(&self.pieces[self.selected_piece?])
     }
 
-    pub fn select_piece_by_pos(&mut self, pos:&Point)
+    pub fn is_king_checked(&self, color:PieceColor) -> bool //Should probably  throw some  error when king not found, but i don't really care about errors rn
+    {
+        let last_moved_piece = match self.selected()
+        {
+            None => return false,
+            Some(val) => val
+        };
+        let king:&Piece = match self.get_king(color)
+        {
+            None => return false,
+            Some(val) => val
+        };
+        if self.he_attacks(last_moved_piece, king)
+        {
+            return true
+        }
+        false
+    }
+
+
+
+    pub fn select_piece_by_pos(&mut self, pos:&Square)
     {
         let selected = match self.pieces.iter().position(|val:&Piece| val.position==*pos)
         {
@@ -123,7 +174,7 @@ impl Board
         }
     }
 
-    pub fn move_piece(&mut self,  move_to:&Point)
+    pub fn move_piece(&mut self,  move_to:&Square)
     {
         if self.selected_piece.is_none()
         {
@@ -133,62 +184,78 @@ impl Board
         self.remove_piece(move_to);
         let val = self.selected_piece.unwrap(); //make sure that right piece selected
         self.pieces[val].set_position(move_to);
-        self.selected_piece = None;
-        self.change_player();
+        self.turn();
+        print!("move_piece_ended\n");
+
     }
 
-    //TODO: implement some castling
+    fn he_attacks(&self, attacker:&Piece, defender:&Piece) -> bool
+    {
+        attacker.moves_list.iter().any(|ray| ray.end==defender.position)
+    }
+
+
+    //TODO: implement castling
     //TODO: implement pawn killing diagnally
     //TODO: implement en_passant
-    pub fn possible_moves(&self) ->  Vec<Point> //i really don't like how this function is implemented, its should be much smaller
+    fn pattern2ray(&self, pattern:&MovePattern, piece:&Piece) -> Option<MoveRay>
     {
-        match self.selected()
+        let upper_bound = |step:Square|
         {
-            None => vec![],
-            Some(piece) =>
+            let mut upper_bound = piece.position;
+            while upper_bound.x < self.width && upper_bound.y < self.height &&
+                  upper_bound.x > -1         && upper_bound.y > -1
             {
-                let mut result:Vec<Point> = Vec::new();
-                for pattern in piece.move_patterns()
+                let checked_square = upper_bound + step;
+                match self.get_piece(&checked_square)
                 {
-                    match pattern
-                    {
-                        MovePattern::Simple(p) =>  {
-                            let mut p = p;
-                            if piece.piece_type.get_color()==PieceColor::Black
-                            {
-                                p.y = -p.y
-                            }
-                            let m = p+piece.position;
-                            match self.get_piece(&m)
-                            {
-                                None => result.push(p+piece.position),
-                                Some(piece_on_square) =>
-                                    if piece_on_square.piece_type.get_color()!=piece.piece_type.get_color() {
-                                        result.push(p+piece.position)
-                                    }
-                            }
-                        },
-                        MovePattern::InfiniteLine(step) => {
-                            let mut square = piece.position;
-                            while (square.x < self.width as i32 && square.y < self.height as i32) &&
-                                  (square.x > -1 && square.y > -1)
-                            {
-                                square = square+step;
-                                if let Some(piece_on_square) = self.get_piece(&square)
-                                {
-                                    if piece_on_square.piece_type.get_color()!=piece.piece_type.get_color()
-                                    {
-                                        result.push(square)
-                                    }
-                                    break;
-                                }
-                                result.push(square);
-                            }
-                        },
-                    }
+                    Some(piece_on_square) => {
+                        if piece_on_square.piece_type.get_color()!=piece.piece_type.get_color()
+                        {
+                            return checked_square+step
+                        }
+                        return checked_square
+                    },
+                    None => {
+                        upper_bound = checked_square
+                    },
                 }
-                result
+            }
+            return upper_bound
+        };
+
+
+        let pos = piece.position;
+        match pattern
+        {
+            MovePattern::Simple(p) =>
+            {
+                let mut p = *p;
+                if piece.piece_type.get_color()==PieceColor::Black
+                {
+                    p.y = -p.y
+                }
+                let result_square = pos+p;
+                match self.get_piece(&result_square)
+                {
+                    Some(val) if val.piece_type.get_color()==piece.piece_type.get_color() => None,
+                    _ => Some(MoveRay::one_square(result_square)),
+                }
+            }
+            MovePattern::InfiniteLine(p) =>
+            {
+                let p = *p;
+                let ray_end = upper_bound(p)-p;
+                if ray_end == piece.position
+                {
+                    return None
+                }
+                Some (MoveRay::new(pos+p, ray_end))
             }
         }
+    }
+    pub fn generate_moves(&self, piece:&Piece) ->  Vec<MoveRay>
+    {
+        piece.move_patterns().iter().filter_map(|pattern| self.pattern2ray(pattern, piece)).collect()
     }
 }

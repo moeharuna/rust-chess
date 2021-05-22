@@ -84,12 +84,12 @@ impl PixelBoard
     }
 
 
-    fn pixel2cell(&self, pixel: Vector2) -> Point
+    fn pixel2cell(&self, pixel: Vector2) -> Square
     {
         let (cell_width, cell_height) = self.get_cell_wh();
         let cell_width = cell_width as f32;
         let cell_height = cell_height  as f32;
-        Point{x:(pixel.x/cell_width).ceil() as i32,
+        Square{x:(pixel.x/cell_width).ceil() as i32,
               y:(pixel.y/cell_height).ceil() as i32}
     }
     // fn cell2pixel(&self, cell: Point) -> Rectangle
@@ -102,7 +102,7 @@ impl PixelBoard
 
     ///Function that returns postion of mouse where x and y are board squares, not pixels on screen.
     ///Be aware that this function still can return negative values and values largers that Board.board_size()
-    pub fn get_mouse_pos(&self) -> Point
+    pub fn get_mouse_pos(&self) -> Square
     {
         let pixel_mouse_pos = self.raylib.handle.get_mouse_position();
         let mut cell_mouse_pos = self.pixel2cell(pixel_mouse_pos);
@@ -115,15 +115,11 @@ impl PixelBoard
     {
         if self.raylib.handle.is_mouse_button_pressed(consts::MouseButton::MOUSE_LEFT_BUTTON)
         {
-            if self.board.selected().is_some() &&
-                self.board.possible_moves().iter().any(|&square|  square==self.get_mouse_pos())
+            match self.board.selected()
             {
-                self.board.move_piece(&self.get_mouse_pos());
+                Some(val) if val.move_squares().iter().any(|&square| square==self.get_mouse_pos()) => self.board.move_piece(&self.get_mouse_pos()),
+                _ =>  self.board.select_piece_by_pos(&self.get_mouse_pos()),
             }
-            else {
-                self.board.select_piece_by_pos(&self.get_mouse_pos());
-            }
-
         }
     }
 
@@ -152,7 +148,7 @@ impl PixelBoard
           size/cell_height)
     }
 
-    fn calculate_square_color(board:&Board, square:&Point) -> Color
+    fn calculate_square_color(board:&Board, square:&Square) -> Color
     {
         const BLACK_COLOR:Color = Color::BROWN;
         const WHITE_COLOR:Color = Color::GRAY;
@@ -160,7 +156,7 @@ impl PixelBoard
         const MOVES_COLOR:Color = Color::GREEN;
 
 
-        match board.selected() // idk why but rust option<box> can't compared by !=  with None
+        match board.selected()
         {
             None => (),
             Some (val) =>
@@ -168,7 +164,7 @@ impl PixelBoard
                 if val.position==*square
                 {
                     return SELECT_COLOR
-                } else if board.possible_moves().iter().find(|&x| x==square).is_some()
+                } else if val.move_squares().iter().any(|x| x==square)
                 {
                     return MOVES_COLOR
                 }
@@ -200,7 +196,7 @@ impl PixelBoard
             draw.draw_text(&(i+1).to_string(), width_offset-rect_height, i*rect_height+height_offset, rect_height, Color::BLACK);
             for j in 0..board_width as i32
             {
-                let color  = Self::calculate_square_color(&self.board, &Point{x:j, y:i});
+                let color  = Self::calculate_square_color(&self.board, &Square{x:j, y:i});
                 draw.draw_rectangle( j*rect_width+width_offset, i*rect_height+height_offset,
                                      rect_width, rect_height, color);
             }
