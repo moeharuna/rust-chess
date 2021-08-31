@@ -2,7 +2,7 @@ use raylib::prelude::*;
 use raylib::ffi::LoadImageFromMemory;
 use std::ffi::CString;
 use std::collections::HashMap;
-use super::pieces::{*, PieceType::*, PieceColor::*};
+use crate::pieces::{*, PieceType::*, PieceColor::*};
 use super::board::Board;
 
 
@@ -46,7 +46,7 @@ pub struct PixelBoard
     width:i32,
 }
 
-impl PixelBoard
+impl PixelBoard //TODO: somehow fix logic calls on redraw when nothing happining(cache? save frame and redraw it? redraw only when shit happens?)
 {
 
     fn init_textures(raylib:&mut RayLibState) -> HashMap<PieceType, Texture2D>
@@ -101,7 +101,7 @@ impl PixelBoard
     // }
 
     ///Function that returns postion of mouse where x and y are board squares, not pixels on screen.
-    ///Be aware that this function still can return negative values and values largers that Board.board_size()
+    ///Be aware that this function still can return negative values and values largers that Board.size()
     pub fn get_mouse_pos(&self) -> Square
     {
         let pixel_mouse_pos = self.raylib.handle.get_mouse_position();
@@ -117,7 +117,10 @@ impl PixelBoard
         {
             match self.board.selected()
             {
-                Some(val) if val.move_squares().iter().any(|&square| square==self.get_mouse_pos()) => self.board.move_piece(&self.get_mouse_pos()),
+                Some(val) if val.move_list(&self.board)
+                                .iter()
+                                .any(|&square| square==self.get_mouse_pos())  =>
+                    self.board.move_piece(&self.get_mouse_pos()),
                 _ =>  self.board.select_piece_by_pos(&self.get_mouse_pos()),
             }
         }
@@ -135,7 +138,7 @@ impl PixelBoard
 
     fn get_cell_count_wh(b:&Board) -> (i32, i32)
     {
-        let (width, height) = b.board_size();
+        let (width, height) = b.size();
         (1 + width as i32,
          1 + height as i32)
     }
@@ -164,7 +167,7 @@ impl PixelBoard
                 if val.position==*square
                 {
                     return SELECT_COLOR
-                } else if val.move_squares().iter().any(|x| x==square)
+                } else if val.move_list(&board).iter().any(|x| x==square)
                 {
                     return MOVES_COLOR
                 }
@@ -182,7 +185,7 @@ impl PixelBoard
 
 
         let (rect_width, rect_height) = self.get_cell_wh();
-        let (board_width, board_height) = self.board.board_size();
+        let (board_width, board_height) = self.board.size();
         let height_offset = rect_height+1;
         let width_offset  = rect_width+1;
         let mut draw = self.raylib.handle.begin_drawing(&self.raylib.thread);
@@ -205,10 +208,10 @@ impl PixelBoard
         {
             let piece_pos_x =width_offset +  i.position.x as i32*rect_width;
             let piece_pos_y =height_offset +  i.position.y as i32*rect_height;
-            let texture  = match self.textures.get(&i.piece_type)
+            let texture  = match self.textures.get(&i.kind)
             {
                 Some(val) => val,
-                None => panic!("Somehow texture of this type ({:?}) not exist", i.piece_type)
+                None => panic!("Somehow texture of this type ({:?}) not exist", i.kind)
             };
             draw_texture_with_scale(&mut draw, &texture, piece_pos_x, piece_pos_y, rect_width as f32, rect_height as f32)
         }

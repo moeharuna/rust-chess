@@ -1,5 +1,10 @@
-use std::iter::Empty;
+use std::error::Error;
 
+use raylib::ffi::PFNGLDRAWRANGEELEMENTARRAYATIPROC;
+use raylib::math::Vector2;
+use crate::math::*;
+
+use crate::Board;
 ///This struct is how i store data about one square.
 #[derive(Clone,Copy, Debug, PartialEq, Eq)]
 pub struct Square
@@ -38,88 +43,83 @@ impl std::ops::Sub for Square
     }
 }
 
-///This struct is how i store data about already generated move. If generated move is only one square start and end points should be the same
-#[derive(Clone, Debug)]
-pub struct MoveRay //FIXME:rename
+
+
+
+#[derive(Clone, Copy)]
+pub struct Ray
 {
-    pub start:Square,
-    pub end:Square,
-}
-impl MoveRay
-{
-    pub fn new(start:Square, end:Square) -> MoveRay
-    {
-        MoveRay{start, end}
-    }
-    pub fn one_square(square:Square) -> MoveRay
-    {
-        MoveRay{start:square, end:square}
-    }
+    start:Option<Square>,
+    end:Option<Square>,
+    step:Square,
 }
 
-fn ray2square(ray:&MoveRay) -> Vec<Square>
+impl Ray
 {
-    if ray.start == ray.end
+    pub fn new(step:Square) -> Ray
     {
-        return vec![ray.start]
+        Ray{start:None, end:None, step}
     }
-    let mut square = ray.start;
-    let mut result:Vec<Square> = vec![];
-    let direction = ray.end-ray.start;
-    let step = Square{x: (direction.x>0) as i32 - (direction.x<0) as i32,
-                      y: (direction.y>0) as i32 - (direction.y<0) as i32};
-    //print!("start:{:?}, end:{:?}, direction:{:?}, step:{:?}\n", ray.start, ray.end, direction, step);
-    loop
+
+    pub fn resolve(&mut self, host:&Piece, board:&Board) //TODO:rename
     {
-        if square.x==ray.end.x && square.y==ray.end.y
+
+        let first_piece_on_the_way_or_border = |&step|  -> Square
         {
-            break;
-        }
-        result.push(square);
-        square = square + step;
+            let mut end_of_line =  host.position+step;
+            while  board.is_square_on_board(&end_of_line) {
+                match board.get_piece(&end_of_line)
+                {
+                    Some(piece) if piece.kind.color()==host.kind.color() =>
+                    {
+                        end_of_line= end_of_line - step;
+                        break;
+                    },
+                    Some(_) => break,
+                    _ =>  end_of_line= end_of_line + step,
+                }
+            }
+            end_of_line
+        };
+
+
+        self.start = Some(host.position+self.step);
+        self.end = Some(first_piece_on_the_way_or_border(&self.step))
     }
-    //print!("vector: {:?}\n", result);
 
-    result
+    fn panic_if_unresolved(&self)
+    {
+        if !(self.start.is_some() && self.end.is_some()) {
+            panic!("Trying to use unresolved Ray!")
+        }
+    }
+
+    pub fn to_squares(&self) -> Vec<Square>
+    {
+        self.panic_if_unresolved();
+        let mut result:Vec<Square> = Vec::new();
+        let mut square = self.start.unwrap();
+        while square!= self.end.unwrap() + self.step
+        {
+            result.push(square);
+            square = square+self.step;
+        }
+        result
+    }
+    pub fn is_square_on_ray(&self, square:Square)
+    {
+        self.panic_if_unresolved();
+        is_point_on_line(square, (self.start.unwrap(), self.end.unwrap()));
+    }
 }
-
 ///This enum is how i store data about abstract move that yet to be generated.
+#[derive(Clone)]
 pub enum MovePattern
 {
     Simple(Square),
-    InfiniteLine(Square), //point here is move step and direction e.g. (0, 1) means up by one
+    LineMove(Ray),
     //    EnPassent(Point), //maybe?
     //Castling(Point), //maybe?
-}
-
-
-
-#[derive(Clone, Debug)]
-pub struct Piece
-{
-    pub position:Square,
-    pub piece_type:PieceType,
-    pub moves_list:Vec<MoveRay>,
-}
-
-impl Piece
-{
-    pub fn new(position:Square, piece_type:PieceType, moves_list:Vec<MoveRay>) -> Piece
-    {
-        Piece{position, piece_type, moves_list}
-    }
-    pub fn set_position(&mut self, point:&Square)
-    {
-        self.position = *point;
-    }
-    pub fn move_patterns(&self) -> Vec<MovePattern>
-    {
-        self.piece_type.move_patterns(self.position)
-    }
-    pub fn move_squares(&self) -> Vec<Square>
-    {
-        self.moves_list.iter().fold(vec![], |acc, ray| [&acc[..], &ray2square(ray)[..]].concat())
-    }
 }
 
 
@@ -166,11 +166,11 @@ impl PieceType
 {
 
 
-    pub fn get_color(&self) -> PieceColor
+    pub fn color(&self) -> PieceColor
     {
         match self
         {
-            PieceType::Pawn(color) => *color, //pretty shitty that i forced to do something like this. but for now its fine
+            PieceType::Pawn(color) => *color, //bad code, but as far as i know it's the only way to extract enum value probably should refactor pieceType into trait but it's too much work :/
             PieceType::Rook(color) => *color,
             PieceType::Knight(color) => *color,
             PieceType::Bishop(color) => *color,
@@ -178,44 +178,52 @@ impl PieceType
             PieceType::King(color) => *color
         }
     }
-    fn move_patterns(&self, pos:Square) -> Vec<MovePattern>
-    //TODO: Make this compile time?
-    //this function generates vector of  possible moves. They are relative to piece origin and they are ignoring color
+
+    fn is_double_square_move_allowed(&self, pos:Square) -> bool
     {
         match self
         {
-            PieceType::Pawn(PieceColor::Black) if  pos.y==6 => //FIXME: This should have better solution
+            PieceType::Pawn(color) =>
+            {
+                if  (*color==PieceColor::Black && pos.y==6)
+                 || (*color==PieceColor::White && pos.y==1) {
+                     return true
+                }
+                else {return false}
+            }
+            _ => false
+        }
+    }
+    fn move_patterns(&self, pos:Square) -> Vec<MovePattern>
+    //this function generates vector of  possible moves. They are relative to piece origin and they are ignoring color(black pieces will reverse their y later)
+    {
+        match self
+        {
+            PieceType::Pawn(_) if self.is_double_square_move_allowed(pos) =>
             {
                 vec![MovePattern::Simple(Square::new(0, 1)),
                      MovePattern::Simple(Square::new(0, 2))]
             }
-            PieceType::Pawn(PieceColor::White) if  pos.y==1 =>
-            {
-                vec![MovePattern::Simple(Square::new(0, 1)),
-                     MovePattern::Simple(Square::new(0, 2))]
-            },
             PieceType::Pawn(_) =>
             {
                 vec![MovePattern::Simple(Square::new(0, 1))]
             },
 
             PieceType::Rook(_) => {
-                vec!
-                [
-                    MovePattern::InfiniteLine(Square::new(0,  1)), //up
-                    MovePattern::InfiniteLine(Square::new(1,  0)), //right
-                    MovePattern::InfiniteLine(Square::new(0, -1)), //down
-                    MovePattern::InfiniteLine(Square::new(-1, 0)), //left
+                vec! [
+                    MovePattern::LineMove(Ray::new(Square::new(0,  1))), //up
+                    MovePattern::LineMove(Ray::new(Square::new(1,  0))), //right
+                    MovePattern::LineMove(Ray::new(Square::new(0, -1))), //down
+                    MovePattern::LineMove(Ray::new(Square::new(-1, 0))), //left
                 ]
             }
             PieceType::Bishop(_) =>
             {
-                vec!
-                    [
-                        MovePattern::InfiniteLine(Square::new(1,   1)),
-                        MovePattern::InfiniteLine(Square::new(1,  -1)),
-                        MovePattern::InfiniteLine(Square::new(-1,  1)),
-                        MovePattern::InfiniteLine(Square::new(-1, -1)),
+                vec![
+                    MovePattern::LineMove(Ray::new(Square::new(1,   1))),
+                    MovePattern::LineMove(Ray::new(Square::new(1,  -1))),
+                    MovePattern::LineMove(Ray::new(Square::new(-1,  1))),
+                    MovePattern::LineMove(Ray::new(Square::new(-1, -1))),
                     ]
             }
             PieceType::King(_) =>
@@ -236,15 +244,15 @@ impl PieceType
             PieceType::Queen(_) =>
             {
                 vec![
-                    MovePattern::InfiniteLine(Square::new(0,  1)), //up
-                    MovePattern::InfiniteLine(Square::new(1,  0)), //right
-                    MovePattern::InfiniteLine(Square::new(0, -1)), //down
-                    MovePattern::InfiniteLine(Square::new(-1, 0)), //left
+                    MovePattern::LineMove(Ray::new(Square::new(0,  1))), //up
+                    MovePattern::LineMove(Ray::new(Square::new(1,  0))), //right
+                    MovePattern::LineMove(Ray::new(Square::new(0, -1))), //down
+                    MovePattern::LineMove(Ray::new(Square::new(-1, 0))), //left
 
-                    MovePattern::InfiniteLine(Square::new(1,  1)),
-                    MovePattern::InfiniteLine(Square::new(1, -1)),
-                    MovePattern::InfiniteLine(Square::new(-1, 1)),
-                    MovePattern::InfiniteLine(Square::new(-1,-1)),
+                    MovePattern::LineMove(Ray::new(Square::new(1,  1))),
+                    MovePattern::LineMove(Ray::new(Square::new(1, -1))),
+                    MovePattern::LineMove(Ray::new(Square::new(-1, 1))),
+                    MovePattern::LineMove(Ray::new(Square::new(-1,-1))),
                 ]
             }
             PieceType::Knight(_) =>
@@ -260,6 +268,121 @@ impl PieceType
                     MovePattern::Simple(Square::new(-2, 1)),
                     MovePattern::Simple(Square::new(-2,-1)),
                 ]
+            }
+        }
+    }
+}
+
+
+
+#[derive(Debug)]
+pub struct Piece
+{
+    pub position:Square,
+    pub kind:PieceType, //its should be called "type" but "type" is reserved keyword
+}
+
+impl Piece
+{
+    pub fn new(position:Square, piece_type:PieceType) -> Piece
+    {
+        Piece{position, kind: piece_type}
+    }
+
+
+    pub fn set_position(&mut self, point:&Square)
+    {
+        self.position = *point;
+    }
+
+    pub fn checked_move_list(&self, board:&Board) -> Vec<Square>
+    {
+        use PieceType::*;
+        if let King(_) = self.kind {
+                self.move_list(board)
+                    .into_iter()
+                    .filter(|square| board.is_square_safe(square, !self.kind.color()))
+                    .collect()
+            }
+        else {
+            self.move_list(board)
+                .into_iter()
+                .filter(|square| self.will_move_save_king(board, square))
+                .collect()
+        }
+    }
+
+    fn will_move_save_king(&self, _board:&Board, _square:&Square) -> bool
+    {
+        false
+    }
+
+
+    pub fn move_list(&self, board:&Board) ->  Vec<Square>
+    {
+        self.kind.move_patterns(self.position)
+            .into_iter()
+            .map(|pattern| self.pattern2squares(pattern, board))
+            .flatten()
+            .collect()
+    }
+
+
+    fn pattern2squares(&self,
+                       pattern: MovePattern,
+                       board:&Board) -> Vec<Square>
+    {
+        use MovePattern::*;
+        use PieceType::*;
+        use PieceColor::*;
+
+
+        let get_end_square = |square:Square| -> Square
+        {
+            if self.kind.color() == Black {
+                return self.position-square
+            }
+            self.position+square
+        };
+        match pattern
+        {
+            Simple(square) =>
+            {
+                let result_square = get_end_square(square);
+
+
+                if let Pawn(_) = self.kind //FIXME: Horrible solution for pawn capturing, idk how to make it better
+                {
+                    let left = Square::new(result_square.x-1, result_square.y);
+                    let right = Square::new(result_square.x+1, result_square.y);
+
+                    let mut result_vec = vec![];
+
+                    if let None = board.get_piece(&result_square)
+                    {
+                        result_vec.push(result_square);
+                    }
+                    if matches!(board.get_piece(&left), Some(piece) if piece.kind.color()!=self.kind.color())
+                    {
+                        result_vec.push(left);
+                    }
+                    if matches!(board.get_piece(&right), Some(piece) if piece.kind.color()!=self.kind.color())
+                    {
+                        result_vec.push(right);
+                    }
+                    return result_vec
+                }
+
+                if matches!(board.get_piece(&result_square), Some(piece) if piece.kind.color()==self.kind.color())
+                {
+                    return vec![];
+                }
+                vec![result_square]
+            },
+            LineMove(mut ray) => {
+
+                ray.resolve(self, board);
+                ray.to_squares()
             }
         }
     }

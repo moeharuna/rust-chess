@@ -1,5 +1,3 @@
-use raylib::ffi::GL_COMPRESSED_SIGNED_RED_RGTC1;
-
 use super::pieces::*;
 use std::convert::TryInto;
 pub struct Board
@@ -9,22 +7,14 @@ pub struct Board
     height:i32,
     pub selected_piece:Option<usize>,
     current_player_color:PieceColor,
-    is_checked:bool,
+    pub checked_king:Option<PieceColor>,
 }
 impl Board
 {
-    fn regenerate_moves(&mut self)
-    {
-        for i in 0..self.pieces.len()
-        {
-            self.pieces[i].moves_list = self.generate_moves(&self.pieces[i]);
-        }
-        print!("generated\n");
-    }
+
     pub fn turn(&mut self)
     {
-        self.regenerate_moves();
-        if self.is_king_checked(!self.current_player_color)
+        if self.is_king_attacked_last_turn(!self.current_player_color)
         {
             print!("King is checked!\n");
         }
@@ -33,22 +23,27 @@ impl Board
         print!("turn ended\n")
     }
 
-    pub fn board_size(&self) -> (i32, i32)
+    pub fn size(&self) -> (i32, i32)
     {
         (self.width, self.height)
+    }
+    pub fn is_square_on_board(&self, square: &Square) -> bool
+    {
+            return
+                square.x < self.width && square.y < self.height &&
+                square.x > -1         && square.y > -1
     }
     pub fn from_fen_string(string:&str, width:i32, height:i32) ->Board
     {
         let pieces = Board::parse_fen_string(string);
-        let mut result = Board{
+        let  result = Board{
             pieces,
             width,
             height,
             selected_piece:None,
             current_player_color:PieceColor::White,
-            is_checked:false
+            checked_king:None,
         };
-        result.regenerate_moves();
         result
     }
 
@@ -81,7 +76,7 @@ impl Board
                 for (_j, ch) in string.chars().enumerate()
                 {
                     if ch.is_ascii_digit() {current_x+=ch.to_digit(10).unwrap() as i32} //FIX THIS SHIT IT WONT WORK WITH BOARD SIZE > 9
-                    else {pieces_vector.push(Piece::new(Square::new(current_x, i.try_into().unwrap()), fen_char_to_piece_type(ch), vec![]));}
+                    else {pieces_vector.push(Piece::new(Square::new(current_x, i.try_into().unwrap()), fen_char_to_piece_type(ch)));}
                     current_x+=1;
                 }
             }
@@ -103,10 +98,17 @@ impl Board
             PieceColor::White => PieceColor::Black,
         }
     }
-
     pub fn get_piece(&self, square:&Square) -> Option<&Piece>
     {
         self.pieces.iter().find(|val:&&Piece| val.position==*square)
+    }
+    pub fn has_piece(&self, square:&Square) -> bool
+    {
+        match self.get_piece(square)
+        {
+            Some(_) => true,
+            None => false
+        }
     }
     pub fn remove_piece(&mut self, square:&Square) -> bool //TODO: Validate selected_piece after remove
     {
@@ -132,7 +134,7 @@ impl Board
 
     fn get_king(&self, color:PieceColor) -> Option<&Piece>
     {
-        self.pieces.iter().find(|piece| piece.piece_type==PieceType::King(color))
+        self.pieces.iter().find(|piece| piece.kind==PieceType::King(color))
     }
 
     pub fn selected(&self) -> Option<&Piece>
@@ -140,7 +142,22 @@ impl Board
         Some(&self.pieces[self.selected_piece?])
     }
 
-    pub fn is_king_checked(&self, color:PieceColor) -> bool //Should probably  throw some  error when king not found, but i don't really care about errors rn
+    pub fn is_square_attacked(&self, square:&Square, attacker_color:PieceColor) -> bool
+    {
+        self.pieces.iter()
+                   .filter(|piece| piece.kind.color()==attacker_color)
+                   .any(|piece| piece.move_list(self)
+                        .iter()
+                        .any(|possible_square| possible_square==square)) //It's  O(n^2) so fucking bad
+
+
+    }
+    pub fn is_square_safe(&self, square:&Square, attacker_color:PieceColor) -> bool
+    {
+        !self.is_square_attacked(square, attacker_color)
+    }
+
+    pub fn is_king_attacked_last_turn(&self, color:PieceColor) -> bool //Should probably  throw some  error when king not found, but i don't really care about errors rn
     {
         let last_moved_piece = match self.selected()
         {
@@ -152,10 +169,11 @@ impl Board
             None => return false,
             Some(val) => val
         };
-        if self.he_attacks(last_moved_piece, king)
+        if self.he_attacks(last_moved_piece, king) //direct check
         {
             return true
         }
+
         false
     }
 
@@ -168,7 +186,7 @@ impl Board
             None => return,
             Some(val) => val,
         };
-        if self.current_player_color == self.pieces[selected].piece_type.get_color()
+        if self.current_player_color == self.pieces[selected].kind.color()
         {
             self.selected_piece = self.pieces.iter().position(|val:&Piece| val.position==*pos);
         }
@@ -191,71 +209,9 @@ impl Board
 
     fn he_attacks(&self, attacker:&Piece, defender:&Piece) -> bool
     {
-        attacker.moves_list.iter().any(|ray| ray.end==defender.position)
+        attacker.move_list(self).iter().any(|square| *square==defender.position)
     }
 
 
-    //TODO: implement castling
-    //TODO: implement pawn killing diagnally
-    //TODO: implement en_passant
-    fn pattern2ray(&self, pattern:&MovePattern, piece:&Piece) -> Option<MoveRay>
-    {
-        let upper_bound = |step:Square|
-        {
-            let mut upper_bound = piece.position;
-            while upper_bound.x < self.width && upper_bound.y < self.height &&
-                  upper_bound.x > -1         && upper_bound.y > -1
-            {
-                let checked_square = upper_bound + step;
-                match self.get_piece(&checked_square)
-                {
-                    Some(piece_on_square) => {
-                        if piece_on_square.piece_type.get_color()!=piece.piece_type.get_color()
-                        {
-                            return checked_square+step
-                        }
-                        return checked_square
-                    },
-                    None => {
-                        upper_bound = checked_square
-                    },
-                }
-            }
-            return upper_bound
-        };
 
-
-        let pos = piece.position;
-        match pattern
-        {
-            MovePattern::Simple(p) =>
-            {
-                let mut p = *p;
-                if piece.piece_type.get_color()==PieceColor::Black
-                {
-                    p.y = -p.y
-                }
-                let result_square = pos+p;
-                match self.get_piece(&result_square)
-                {
-                    Some(val) if val.piece_type.get_color()==piece.piece_type.get_color() => None,
-                    _ => Some(MoveRay::one_square(result_square)),
-                }
-            }
-            MovePattern::InfiniteLine(p) =>
-            {
-                let p = *p;
-                let ray_end = upper_bound(p)-p;
-                if ray_end == piece.position
-                {
-                    return None
-                }
-                Some (MoveRay::new(pos+p, ray_end))
-            }
-        }
-    }
-    pub fn generate_moves(&self, piece:&Piece) ->  Vec<MoveRay>
-    {
-        piece.move_patterns().iter().filter_map(|pattern| self.pattern2ray(pattern, piece)).collect()
-    }
 }

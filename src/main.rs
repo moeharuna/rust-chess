@@ -1,6 +1,7 @@
 mod pieces;
 mod board;
 mod drawing;
+mod math;
 use std::{thread::sleep, time::Duration};
 
 use board::Board;
